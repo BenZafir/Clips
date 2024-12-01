@@ -1,12 +1,15 @@
 import { inject, Injectable } from '@angular/core';
-import { Auth, createUserWithEmailAndPassword, updateProfile, authState } from '@angular/fire/auth';
 import {
-  Firestore,
-  doc,
-  setDoc,
-} from '@angular/fire/firestore';
+  Auth,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  authState,
+  signOut,
+} from '@angular/fire/auth';
+import { Firestore, doc, setDoc } from '@angular/fire/firestore';
 import IUser from '../model/user';
-import { delay } from 'rxjs/operators';
+import { delay, filter, map, switchMap } from 'rxjs/operators';
+import { Router, NavigationEnd, ActivatedRoute } from '@angular/router';
 
 @Injectable({
   providedIn: 'root',
@@ -15,8 +18,29 @@ export class AuthService {
   #auth = inject(Auth);
   #firestore = inject(Firestore);
   authState$ = authState(this.#auth);
-  authStateWithDelay$ = this.authState$.pipe(delay(1000))
-  constructor() {}
+  authStateWithDelay$ = this.authState$.pipe(delay(1000));
+  router = inject(Router);
+  route = inject(ActivatedRoute);
+
+  redirect = false;
+  constructor() {
+    this.router.events
+      .pipe(
+        filter((event) => event instanceof NavigationEnd),
+        map((event) => {
+          let currentRoute = this.route;
+
+          while (currentRoute.firstChild) {
+            currentRoute = currentRoute.firstChild;
+          }
+          return currentRoute;
+        }),
+        switchMap((route) => route.data)
+      )
+      .subscribe((data) => {
+        this.redirect = data['authOnly'] ?? false;
+      });
+  }
   async createUser(userData: IUser) {
     const userCred = await createUserWithEmailAndPassword(
       this.#auth,
@@ -33,5 +57,12 @@ export class AuthService {
       displayName: userData.name,
     });
     console.log(userCred);
+  }
+  async logout($event?: Event) {
+    $event?.preventDefault();
+    await signOut(this.#auth);
+    if (this.redirect) {
+      await this.router.navigateByUrl('/');
+    }
   }
 }
